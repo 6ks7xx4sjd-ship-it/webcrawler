@@ -101,3 +101,65 @@ def extract_page_data(html: str, page_url: str) -> dict:
         "outgoing_links": outgoing_links,
         "image_urls": image_urls
     }
+
+def get_html(url: str) -> str:
+    """
+    Fetch the HTML content of the given URL and return it as a string.
+    """
+    import requests
+
+    response =requests.get(url, headers={"User-Agent": "BootCrawler/1.0"})
+
+    #raise an error for 400 level responses
+    response.raise_for_status()
+
+    #raise an error if response content type is not text/html
+    if "text/html" not in response.headers.get("Content-Type", ""):
+        raise ValueError(f"URL {url} did not return HTML content")
+
+    #raise an error if response content is empty
+    if not response.text:
+        raise ValueError(f"URL {url} returned empty content")
+
+    #raise an error if response content is too large (e.g., > 10 MB)
+    if len(response.content) > 10 * 1024 * 1024:
+        raise ValueError(f"URL {url} returned content that is too large")
+
+    return response.text
+
+def crawl_page(base_url: str, current_url=None, page_data: dict = None) -> dict:
+    """
+    Crawl a single page and return the extracted data.
+    """
+    if current_url is None:
+        current_url = base_url
+    from urllib.parse import urlparse
+    if urlparse(current_url).netloc != urlparse(base_url).netloc:
+        return page_data if page_data is not None else {}
+
+    normalized_current_url = normalize_url(current_url)
+    html = get_html(current_url)
+    print(f"Crawling {current_url}...")
+
+    #When get_html raises an error, catch it and print the error message, then return the page_data as is
+    try:
+        html = get_html(current_url)
+
+        #Add normalized_current_url to page_data if not already present
+        if page_data is None:
+            page_data = {}
+        if normalized_current_url not in page_data:
+            page_data[normalized_current_url] = extract_page_data(html, current_url)
+
+        #Get all urls from the current page and crawl them recursively
+        urls = get_urls_from_html(html, current_url)
+        for url in urls:
+            normalized_url = normalize_url(url)
+            if normalized_url not in page_data:
+                crawl_page(base_url, url, page_data)
+
+    except Exception as e:
+        print(f"Error fetching {current_url}: {e}")
+        return page_data if page_data is not None else {}
+
+    return page_data
