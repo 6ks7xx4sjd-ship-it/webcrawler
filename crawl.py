@@ -1,3 +1,5 @@
+from urllib.parse import urlparse
+
 def normalize_url(url):
     """
     Normalize a URL by removing URI, scheme, and trailing slash.
@@ -163,3 +165,95 @@ def crawl_page(base_url: str, current_url=None, page_data: dict = None) -> dict:
         return page_data if page_data is not None else {}
 
     return page_data
+
+import asyncio
+from asyncio import tasks
+from urllib import response
+import aiohttp
+
+class AsyncCrawler:
+    """
+    A class to crawl web pages asynchronously.
+    """
+
+    def __init__(self, base_url: str, base_domain: str, page_data: dict = None, max_concurrency: int = 10, session: aiohttp.ClientSession = None):
+        self.base_url = base_url
+        self.base_domain = base_domain
+        self.page_data = page_data or {}
+        self.lock = asyncio.Lock()
+        self.max_concurrency = max_concurrency
+        self.semaphore = asyncio.Semaphore(max_concurrency)
+        self.session = session
+
+    async def __aenter__(self):
+        self.session = aiohttp.ClientSession()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.session.close()
+
+    async def add_page_visit(self, normalized_url):
+        """
+        Check if the normalized URL is already a key in the page_data dictionary
+        """
+        async with self.lock:
+            if normalized_url not in self.page_data:
+                return True
+            else:
+                return False
+
+    async def get_html(self, url: str) -> str:
+        """
+        Fetch the HTML content of the given URL asynchronously.
+        """
+
+        async with self.session.get(url, headers={"User-Agent": "BootCrawler/1.0"}) as response:
+            response.raise_for_status()
+
+            html = await response.text()
+
+            if "text/html" not in response.headers.get("Content-Type", ""):
+                raise ValueError(f"{url} did not return HTML content")
+
+            if not html:
+                raise ValueError(f"URL {url} returned empty content")
+
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > 10 * 1024 * 1024:
+                raise ValueError(f"URL {url} returned content that is too large")
+        
+            return html
+
+    async def crawl_page(self, current_url: str):
+        if urlparse(current_url).netloc != urlparse(self.base_url).netloc:
+            return
+
+        normalized_current_url = normalize_url(current_url)
+
+        is_new = await self.add_page_visit(normalized_current_url)
+        if not is_new:
+            return
+
+        async with self.semaphore:
+            html = await self.get_html(current_url)
+            print(f"Crawling {current_url}...")
+
+            async with self.lock:
+                self.page_data[normalized_current_url] = extract_page_data(html, current_url)
+
+        urls = get_urls_from_html(html, current_url)
+        tasks = []
+        for url in urls:
+           tasks.append(asyncio.create_task(self.crawl_page(url)))
+        await asyncio.gather(*tasks)
+
+    async def crawl(self):
+        await self.crawl_page(self.base_url)
+        return self.page_data
+
+async def crawl_site_async(base_url: str) -> dict:
+    base_domain = urlparse(base_url).netloc
+
+    async with AsyncCrawler(base_url, base_domain) as crawler:
+        page_data = await crawler.crawl()
+        return page_data
