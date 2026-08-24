@@ -210,7 +210,6 @@ class AsyncCrawler:
                 return False
 
             if normalized_url not in self.page_data:
-                self.page_data[normalized_url] = None # Placeholder to mark the page as visited
                 return True
             else:
                 return False
@@ -260,6 +259,9 @@ class AsyncCrawler:
                 print(f"Crawling {current_url}...")
 
                 async with self.lock:
+                    if html is None:
+                        del self.page_data[normalized_current_url]
+                        return
                     self.page_data[normalized_current_url] = extract_page_data(html, current_url)
 
             urls = get_urls_from_html(html, current_url)

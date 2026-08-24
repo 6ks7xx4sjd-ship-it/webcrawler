@@ -1,6 +1,7 @@
 import sys
 from crawl import crawl_site_async
 import asyncio
+from json_report import write_json_report
 
 async def main():
     if len(sys.argv) < 4:
@@ -24,13 +25,15 @@ async def main():
         page_info = await crawl_site_async(sys.argv[1], max_concurrency=max_concurrency, max_pages=max_pages)
         print(f"found {len(page_info)} pages in the crawl")
 
-        for page in page_info.values():
-            if page is not None:
-                print(f"URL: {page['url']}")
-                print(f"Heading: {page['heading']}")
-                print(f"First Paragraph: {page['first_paragraph']}")
-                print(f"Outgoing Links: {page['outgoing_links']}")
-                print(f"Image URLs: {page['image_urls']}")
+        write_json_report(page_info)
+
+        #for page in page_info.values():
+            #if page is not None:
+                #print(f"URL: {page['url']}")
+                #print(f"Heading: {page['heading']}")
+                #print(f"First Paragraph: {page['first_paragraph']}")
+                #print(f"Outgoing Links: {page['outgoing_links']}")
+                #print(f"Image URLs: {page['image_urls']}")
 
 if __name__ == "__main__":
     asyncio.run(main())
